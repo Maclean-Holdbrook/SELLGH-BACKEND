@@ -1,0 +1,27 @@
+﻿# Server Configuration
+PORT=5000
+NODE_ENV=development
+
+# Supabase Configuration
+SUPABASE_URL=https://nszweqmnahxwnalbeoeo.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zendlcW1uYWh4d25hbGJlb2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzODY0OTIsImV4cCI6MjA3ODk2MjQ5Mn0.L-d_dIWpMTtR_Gi-GRZ2ggKmkaHdfBvzLUayv3ohNnk
+SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zendlcW1uYWh4d25hbGJlb2VvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzM4NjQ5MiwiZXhwIjoyMDc4OTYyNDkyfQ.swrQgz5j9g2xdRT5f5MgewHtbegeqZ2l5DqsA55bI0w
+
+# Paystack Configuration
+PAYSTACK_SECRET_KEY=sk_test_46e132f9b7985482997531653723d77ee383c6f9
+PAYSTACK_PUBLIC_KEY=pk_test_88b77ca3ae949e10dcd09be85a1068ce1620e9dc
+
+# Mobile Money Configuration (Add API keys when you get them)
+MTN_MOMO_API_KEY=
+VODAFONE_CASH_API_KEY=
+AIRTELTIGO_API_KEY=
+
+# JWT Secret (for additional auth if needed)
+JWT_SECRET=sellgh_jwt_secret_change_this_in_production
+
+# Email Configuration (Resend)
+RESEND_API_KEY=your_resend_api_key_here
+EMAIL_FROM=SellGH <onboarding@resend.dev>
+
+# Frontend URL (for CORS)
+FRONTEND_URL=http://localhost:5173

@@ -1,0 +1,12 @@
+﻿2026-01-09 19:28:54:2854 info: ðŸš€ SellGH API server running on port 5000
+2026-01-09 19:28:54:2854 info: ðŸ“ Environment: development
+2026-01-09 19:28:54:2854 info: ðŸ“‹ Routes loaded successfully
+2026-01-09 19:28:54:2854 info: ðŸ“ Logging to ./logs directory
+2026-01-09 19:29:27:2927 http: GET /api/products 500 281.011 ms - 72
+2026-01-09 19:29:27:2927 http: GET /api/products/categories 500 76.505 ms - 38
+2026-01-09 19:29:27:2927 http: GET /api/products 500 49.901 ms - 72
+2026-01-09 19:29:27:2927 http: GET /api/products/categories 500 50.693 ms - 38
+2026-01-09 19:35:44:3544 http: GET /api/products 500 182.754 ms - 72
+2026-01-09 19:35:44:3544 http: GET /api/products/categories 500 78.485 ms - 38
+2026-01-09 19:35:44:3544 http: GET /api/products/categories 500 34.870 ms - 38
+2026-01-09 19:35:44:3544 http: GET /api/products 500 41.707 ms - 72
