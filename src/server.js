@@ -41,17 +41,24 @@ app.use(helmet({
 const allowedOrigins = [
   'http://localhost:5173',           // Development frontend
   'http://localhost:3000',           // Alternative dev port
-  process.env.FRONTEND_URL,          // Production frontend
-].filter(Boolean); // Remove undefined values
+  'https://sellgh.vercel.app',       // Primary production URL
+  process.env.FRONTEND_URL,          // Environment variable
+].filter(Boolean).flatMap(origin => origin.split(',').map(o => o.trim()));
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // Check if origin matches allowed list or is a sub-domain of what's allowed
+    const isAllowed = allowedOrigins.some(allowed => {
+      return origin === allowed || (allowed && origin.startsWith(allowed));
+    });
+
+    if (isAllowed || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
+      console.warn(`Blocked by CORS: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },

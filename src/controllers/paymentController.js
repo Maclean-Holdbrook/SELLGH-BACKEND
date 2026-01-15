@@ -43,7 +43,7 @@ export const initializePayment = async (req, res) => {
     const reference = `PAY-${order.order_number}-${Date.now()}`;
 
     // Initialize Paystack transaction
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://sellgh.vercel.app';
     const callbackUrl = `${frontendUrl}/payment/verify?reference=${reference}`;
 
     console.log('🔄 Initializing payment with callback URL:', callbackUrl);
