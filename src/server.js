@@ -126,11 +126,12 @@ app.use((req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-  logger.info(`🚀 SellGH API server running on port ${PORT}`);
-  logger.info(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`📋 Routes loaded successfully`);
-  logger.info(`📝 Logging to ./logs directory`);
-});
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    logger.info(`🚀 SellGH API server running on port ${PORT}`);
+    logger.info(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`📋 Routes loaded successfully`);
+  });
+}
 
 export default app;

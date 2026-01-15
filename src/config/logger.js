@@ -55,30 +55,34 @@ const fileFormat = winston.format.combine(
 
 // Define transports
 const transports = [
-  // Console transport - for development
+  // Console transport
   new winston.transports.Console({
     format,
   }),
-
-  // Error logs - rotate daily, keep for 14 days
-  new DailyRotateFile({
-    filename: path.join(__dirname, '../../logs/error-%DATE%.log'),
-    datePattern: 'YYYY-MM-DD',
-    level: 'error',
-    format: fileFormat,
-    maxFiles: '14d',
-    maxSize: '20m',
-  }),
-
-  // Combined logs - rotate daily, keep for 7 days
-  new DailyRotateFile({
-    filename: path.join(__dirname, '../../logs/combined-%DATE%.log'),
-    datePattern: 'YYYY-MM-DD',
-    format: fileFormat,
-    maxFiles: '7d',
-    maxSize: '20m',
-  }),
 ];
+
+// Add file transports only if not in production/Vercel
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  transports.push(
+    // Error logs - rotate daily, keep for 14 days
+    new DailyRotateFile({
+      filename: path.join(__dirname, '../../logs/error-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      level: 'error',
+      format: fileFormat,
+      maxFiles: '14d',
+      maxSize: '20m',
+    }),
+    // Combined logs - rotate daily, keep for 7 days
+    new DailyRotateFile({
+      filename: path.join(__dirname, '../../logs/combined-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      format: fileFormat,
+      maxFiles: '7d',
+      maxSize: '20m',
+    })
+  );
+}
 
 // Create the logger
 const logger = winston.createLogger({
