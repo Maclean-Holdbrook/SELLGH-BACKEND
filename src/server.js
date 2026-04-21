@@ -19,6 +19,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Vercel and other reverse proxies forward client IPs via X-Forwarded-For.
+// Express must trust the proxy so rate limiting and request IP detection work correctly.
+app.set('trust proxy', 1);
+
 // Security Middleware - PHASE 8 SECURITY HARDENING
 
 // 0. HTTP Request Logging - MUST be before routes
