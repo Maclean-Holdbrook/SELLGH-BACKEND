@@ -193,6 +193,13 @@ export const initializePayment = async (req, res) => {
     const reference = createReference(order.order_number);
     const frontendUrl = process.env.FRONTEND_URL || 'https://sellgh.vercel.app';
     const callbackUrl = `${frontendUrl}/shop`;
+    console.log('Initializing retry payment with callback URL:', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      reference,
+      callbackUrl,
+      frontendUrl,
+    });
 
     const paymentData = {
       email,
