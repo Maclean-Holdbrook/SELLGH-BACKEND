@@ -40,31 +40,25 @@ export const initializePaymentSchema = Joi.object({
     .uppercase(),
 
   payment_method: Joi.string()
-    .valid('card', 'mobile_money')
+    .valid('card', 'mobile_money', 'momo')
     .required()
     .messages({
-      'any.only': 'Payment method must be either card or mobile_money',
+      'any.only': 'Payment method must be one of: card, mobile_money, momo',
       'any.required': 'Payment method is required',
     }),
 
   mobile_money_provider: Joi.string()
     .valid('MTN', 'VODAFONE', 'AIRTELTIGO')
-    .when('payment_method', {
-      is: 'mobile_money',
-      then: Joi.required(),
-      otherwise: Joi.optional().allow(null),
-    })
+    .optional()
+    .allow(null)
     .messages({
       'any.only': 'Mobile money provider must be MTN, VODAFONE, or AIRTELTIGO',
     }),
 
   mobile_money_number: Joi.string()
     .pattern(/^0\d{9}$/)
-    .when('payment_method', {
-      is: 'mobile_money',
-      then: Joi.required(),
-      otherwise: Joi.optional().allow(null),
-    })
+    .optional()
+    .allow(null)
     .messages({
       'string.pattern.base': 'Mobile money number must be 10 digits starting with 0',
     }),
@@ -89,10 +83,10 @@ export const initializePaymentSchema = Joi.object({
       })
     )
     .min(1)
-    .required()
+    .optional()
+    .allow(null)
     .messages({
       'array.min': 'Cart must contain at least one item',
-      'any.required': 'Cart items are required',
     }),
 
   shipping_address: Joi.object({
@@ -132,7 +126,7 @@ export const initializePaymentSchema = Joi.object({
       .optional()
       .default('GH')
       .uppercase(),
-  }).required(),
+  }).optional().allow(null),
 
   metadata: Joi.object()
     .optional()
