@@ -187,6 +187,7 @@ export const createCheckout = async (req, res) => {
         product_image: product.image_url || null,
         price: product.price,
         quantity: item.quantity,
+        subtotal,
         total: subtotal,
       });
     }
