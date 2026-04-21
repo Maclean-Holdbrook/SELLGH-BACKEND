@@ -4,6 +4,17 @@ import paystackService from '../services/paystackService.js';
 import { getLineItemTotal } from '../utils/schemaContract.js';
 
 const buildOrderNumber = () => `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+const normalizeFrontendUrl = (url) => {
+  if (!url) {
+    return 'https://sellgh.vercel.app';
+  }
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  return `https://${url}`;
+};
 
 const getVendorIdForUser = async (userId) => {
   const { data: vendor } = await supabaseAdmin
@@ -26,7 +37,7 @@ const initializeOrderPayment = async ({ order, paymentMethod }) => {
   }
 
   const reference = `PAY-${order.order_number}-${Date.now()}`;
-  const frontendUrl = process.env.FRONTEND_URL || 'https://sellgh.vercel.app';
+  const frontendUrl = normalizeFrontendUrl(process.env.FRONTEND_URL);
   const callbackUrl = `${frontendUrl}/shop`;
   console.log('Initializing checkout payment with callback URL:', {
     orderId: order.id,

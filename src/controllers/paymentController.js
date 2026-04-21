@@ -5,6 +5,17 @@ import crypto from 'crypto';
 import { getLineItemTotal } from '../utils/schemaContract.js';
 
 const createReference = (orderNumber) => `PAY-${orderNumber}-${Date.now()}`;
+const normalizeFrontendUrl = (url) => {
+  if (!url) {
+    return 'https://sellgh.vercel.app';
+  }
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  return `https://${url}`;
+};
 
 const groupItemsByVendor = (orderItems) => {
   const vendorItems = {};
@@ -191,7 +202,7 @@ export const initializePayment = async (req, res) => {
     }
 
     const reference = createReference(order.order_number);
-    const frontendUrl = process.env.FRONTEND_URL || 'https://sellgh.vercel.app';
+    const frontendUrl = normalizeFrontendUrl(process.env.FRONTEND_URL);
     const callbackUrl = `${frontendUrl}/shop`;
     console.log('Initializing retry payment with callback URL:', {
       orderId: order.id,
