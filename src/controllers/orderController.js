@@ -170,6 +170,13 @@ export const createCheckout = async (req, res) => {
         });
       }
 
+      if (!product.vendor_id) {
+        return res.status(400).json({
+          success: false,
+          error: `${product.name} is not linked to a vendor`,
+        });
+      }
+
       if ((product.stock_quantity || 0) < item.quantity) {
         return res.status(400).json({
           success: false,
@@ -243,7 +250,13 @@ export const createCheckout = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Create checkout error:', error);
+    console.error('Create checkout error:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+      error,
+    });
 
     if (createdOrderId) {
       await supabaseAdmin.from('order_items').delete().eq('order_id', createdOrderId);
@@ -252,7 +265,7 @@ export const createCheckout = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      error: 'Failed to create checkout',
+      error: error.message || 'Failed to create checkout',
     });
   }
 };
