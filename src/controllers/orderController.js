@@ -27,7 +27,7 @@ const initializeOrderPayment = async ({ order, paymentMethod }) => {
 
   const reference = `PAY-${order.order_number}-${Date.now()}`;
   const frontendUrl = process.env.FRONTEND_URL || 'https://sellgh.vercel.app';
-  const callbackUrl = `${frontendUrl}/payment/verify?reference=${reference}`;
+  const callbackUrl = `${frontendUrl}/shop?payment_reference=${reference}`;
 
   const paymentData = {
     email: order.customer_email,
