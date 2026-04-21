@@ -5,10 +5,9 @@ import { supabase, supabaseAdmin } from '../config/supabase.js';
  */
 export const getAllProducts = async (req, res) => {
   try {
-    const { category, vendor, search, limit = 20, offset = 0 } = req.query;
+    const { category, vendor, search, limit, offset = 0 } = req.query;
 
-    // Use JOIN to get all data in one query
-    const { data: products, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('products')
       .select(`
         *,
@@ -17,8 +16,17 @@ export const getAllProducts = async (req, res) => {
         images:product_images(*)
       `)
       .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
+      .order('created_at', { ascending: false });
+
+    if (limit) {
+      query = query.limit(parseInt(limit, 10));
+    }
+
+    if (offset) {
+      query = query.range(parseInt(offset, 10), limit ? parseInt(offset, 10) + parseInt(limit, 10) - 1 : 99999);
+    }
+
+    const { data: products, error } = await query;
 
     if (error) {
       console.error('Supabase error details:', JSON.stringify(error, null, 2));

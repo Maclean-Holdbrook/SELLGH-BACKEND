@@ -150,8 +150,7 @@ export const productQuerySchema = Joi.object({
     .integer()
     .min(1)
     .max(100)
-    .optional()
-    .default(20),
+    .optional(),
 
   offset: Joi.number()
     .integer()
