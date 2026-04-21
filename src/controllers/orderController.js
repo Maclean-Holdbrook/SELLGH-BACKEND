@@ -149,7 +149,7 @@ export const createCheckout = async (req, res) => {
     const productIds = cart_items.map((item) => item.product_id);
     const { data: products, error: productsError } = await supabaseAdmin
       .from('products')
-      .select('id, name, price, stock_quantity, vendor_id, image_url, is_active')
+      .select('id, name, price, stock_quantity, vendor_id, is_active, product_images(image_url, is_primary, display_order)')
       .in('id', productIds);
 
     if (productsError) {
@@ -186,12 +186,16 @@ export const createCheckout = async (req, res) => {
 
       const subtotal = Number(product.price) * item.quantity;
       total += subtotal;
+      const primaryImage =
+        product.product_images?.find((image) => image.is_primary)?.image_url
+        || product.product_images?.[0]?.image_url
+        || null;
 
       orderItems.push({
         product_id: product.id,
         vendor_id: product.vendor_id,
         product_name: product.name,
-        product_image: product.image_url || null,
+        product_image: primaryImage,
         price: product.price,
         quantity: item.quantity,
         subtotal,
