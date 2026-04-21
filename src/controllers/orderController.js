@@ -149,7 +149,7 @@ export const createCheckout = async (req, res) => {
     const productIds = cart_items.map((item) => item.product_id);
     const { data: products, error: productsError } = await supabaseAdmin
       .from('products')
-      .select('id, name, price, stock_quantity, vendor_id, is_active, product_images(image_url, is_primary, display_order)')
+      .select('id, name, price, stock_quantity, vendor_id, is_active, product_images(image_url, is_primary)')
       .in('id', productIds);
 
     if (productsError) {
