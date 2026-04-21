@@ -56,50 +56,44 @@ router.post('/upgrade-to-vendor', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    console.log('🔄 Upgrading user to vendor:', userId);
-
-    // Check current user role
     const { data: currentUser, error: fetchError } = await supabaseAdmin
       .from('users')
-      .select('role, email, full_name')
+      .select('role, email, full_name, phone')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) {
-      console.error('❌ Error fetching user:', fetchError);
+      console.error('Error fetching user for vendor upgrade:', fetchError);
       return res.status(500).json({ error: 'Failed to fetch user data' });
     }
 
-    if (!currentUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Check if already a vendor or admin
-    if (currentUser.role === 'vendor') {
+    if (currentUser?.role === 'vendor') {
       return res.status(400).json({ error: 'User is already a vendor' });
     }
 
-    if (currentUser.role === 'admin') {
+    if (currentUser?.role === 'admin') {
       return res.status(400).json({ error: 'Admin cannot be converted to vendor' });
     }
 
-    // Update user role to vendor
+    const payload = {
+      id: userId,
+      email: currentUser?.email || req.user.email,
+      full_name: currentUser?.full_name || req.user.user_metadata?.full_name || req.user.user_metadata?.name || '',
+      phone: currentUser?.phone || req.user.user_metadata?.phone || '',
+      role: 'vendor',
+      updated_at: new Date().toISOString(),
+    };
+
     const { data: updatedUser, error: updateError } = await supabaseAdmin
       .from('users')
-      .update({
-        role: 'vendor',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId)
-      .select()
+      .upsert(payload, { onConflict: 'id' })
+      .select('id, email, full_name, phone, role, created_at, updated_at')
       .single();
 
     if (updateError) {
-      console.error('❌ Error updating user role:', updateError);
+      console.error('Error updating user role:', updateError);
       return res.status(500).json({ error: 'Failed to update user role' });
     }
-
-    console.log('✅ User upgraded to vendor successfully');
 
     res.json({
       success: true,
@@ -108,12 +102,11 @@ router.post('/upgrade-to-vendor', authenticate, async (req, res) => {
         id: updatedUser.id,
         email: updatedUser.email,
         full_name: updatedUser.full_name,
-        role: updatedUser.role
-      }
+        role: updatedUser.role,
+      },
     });
-
   } catch (error) {
-    console.error('❌ Error in upgrade-to-vendor:', error);
+    console.error('Error in upgrade-to-vendor:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -130,17 +123,16 @@ router.get('/profile', authenticate, async (req, res) => {
       .single();
 
     if (error) {
-      console.error('❌ Error fetching user profile:', error);
+      console.error('Error fetching user profile:', error);
       return res.status(500).json({ error: 'Failed to fetch user profile' });
     }
 
     res.json({
       success: true,
-      user
+      user,
     });
-
   } catch (error) {
-    console.error('❌ Error in get profile:', error);
+    console.error('Error in get profile:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
