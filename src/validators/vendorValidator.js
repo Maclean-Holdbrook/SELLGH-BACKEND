@@ -85,7 +85,7 @@ export const createVendorSchema = Joi.object({
     .trim(),
 
   mobile_money_provider: Joi.string()
-    .valid('MTN', 'VODAFONE', 'AIRTELTIGO', '')
+    .valid('MTN', 'VODAFONE', 'AIRTELTIGO', 'MTN ', '')
     .optional()
     .allow('', null),
 
@@ -97,7 +97,24 @@ export const createVendorSchema = Joi.object({
     .messages({
       'string.pattern.base': 'Mobile money number must be 10 digits starting with 0',
     }),
-});
+  mtn_momo_number: Joi.string()
+    .pattern(/^0\d{9}$/)
+    .optional()
+    .allow('', null)
+    .trim(),
+
+  vodafone_cash_number: Joi.string()
+    .pattern(/^0\d{9}$/)
+    .optional()
+    .allow('', null)
+    .trim(),
+
+  airteltigo_number: Joi.string()
+    .pattern(/^0\d{9}$/)
+    .optional()
+    .allow('', null)
+    .trim(),
+}).or('business_description', 'description').or('business_address', 'address');
 
 // Update vendor profile validation
 export const updateVendorSchema = Joi.object({
@@ -162,6 +179,24 @@ export const updateVendorSchema = Joi.object({
     .allow('', null),
 
   mobile_money_number: Joi.string()
+    .pattern(/^0\d{9}$/)
+    .optional()
+    .allow('', null)
+    .trim(),
+
+  mtn_momo_number: Joi.string()
+    .pattern(/^0\d{9}$/)
+    .optional()
+    .allow('', null)
+    .trim(),
+
+  vodafone_cash_number: Joi.string()
+    .pattern(/^0\d{9}$/)
+    .optional()
+    .allow('', null)
+    .trim(),
+
+  airteltigo_number: Joi.string()
     .pattern(/^0\d{9}$/)
     .optional()
     .allow('', null)

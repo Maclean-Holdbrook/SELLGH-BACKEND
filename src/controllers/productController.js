@@ -67,9 +67,9 @@ export const getProductById = async (req, res) => {
     if (error) throw error;
 
     // Increment view count
-    await supabase
+    await supabaseAdmin
       .from('products')
-      .update({ views: data.views + 1 })
+      .update({ view_count: (data.view_count || 0) + 1 })
       .eq('id', id);
 
     res.json({ product: data });
@@ -227,7 +227,7 @@ export const createProduct = async (req, res) => {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
     // Create product
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('products')
       .insert([
         {
@@ -271,7 +271,7 @@ export const updateProduct = async (req, res) => {
     const updates = req.body;
 
     // Get vendor ID
-    const { data: vendor } = await supabase
+    const { data: vendor } = await supabaseAdmin
       .from('vendors')
       .select('id')
       .eq('user_id', req.user.id)
@@ -290,7 +290,7 @@ export const updateProduct = async (req, res) => {
     delete updates.review_count;
 
     // Update product
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('products')
       .update(updates)
       .eq('id', id)
@@ -315,7 +315,7 @@ export const deleteProduct = async (req, res) => {
     const { id } = req.params;
 
     // Get vendor ID
-    const { data: vendor } = await supabase
+    const { data: vendor } = await supabaseAdmin
       .from('vendors')
       .select('id')
       .eq('user_id', req.user.id)
@@ -326,7 +326,7 @@ export const deleteProduct = async (req, res) => {
     }
 
     // Delete product
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('products')
       .delete()
       .eq('id', id)
@@ -349,7 +349,7 @@ export const toggleProductStatus = async (req, res) => {
     const { id } = req.params;
 
     // Get vendor ID
-    const { data: vendor } = await supabase
+    const { data: vendor } = await supabaseAdmin
       .from('vendors')
       .select('id')
       .eq('user_id', req.user.id)
@@ -360,7 +360,7 @@ export const toggleProductStatus = async (req, res) => {
     }
 
     // Get current status
-    const { data: product } = await supabase
+    const { data: product } = await supabaseAdmin
       .from('products')
       .select('is_active')
       .eq('id', id)
@@ -372,7 +372,7 @@ export const toggleProductStatus = async (req, res) => {
     }
 
     // Toggle status
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('products')
       .update({ is_active: !product.is_active })
       .eq('id', id)

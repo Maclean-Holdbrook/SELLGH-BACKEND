@@ -1,5 +1,6 @@
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import paystackService from '../services/paystackService.js';
+import { getLegacyVendorPayload, getVendorSubaccountContact } from '../utils/schemaContract.js';
 
 /**
  * Get vendor profile by user ID
@@ -32,17 +33,10 @@ export const createVendorProfile = async (req, res) => {
   try {
     const {
       business_name,
-      business_description,
-      business_address,
-      business_phone,
-      business_email,
-      mtn_momo_number,
-      vodafone_cash_number,
-      airteltigo_number,
     } = req.body;
 
     // Validate required fields
-    if (!business_name || !business_description || !business_address) {
+    if (!business_name) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -58,19 +52,14 @@ export const createVendorProfile = async (req, res) => {
     }
 
     // Create vendor profile
+    const vendorPayload = getLegacyVendorPayload(req.body);
+
     const { data, error } = await supabase
       .from('vendors')
       .insert([
         {
           user_id: req.user.id,
-          business_name,
-          business_description,
-          business_address,
-          business_phone,
-          business_email,
-          mtn_momo_number,
-          vodafone_cash_number,
-          airteltigo_number,
+          ...vendorPayload,
           is_verified: false,
           verification_status: 'pending',
         },
@@ -92,7 +81,7 @@ export const createVendorProfile = async (req, res) => {
  */
 export const updateVendorProfile = async (req, res) => {
   try {
-    const updates = req.body;
+    const updates = getLegacyVendorPayload(req.body);
 
     // Remove fields that shouldn't be updated by vendor
     delete updates.is_verified;
@@ -182,16 +171,10 @@ export const verifyVendor = async (req, res) => {
 
     // Create Paystack subaccount if approving vendor and subaccount doesn't exist
     let subaccountData = {};
+    const { accountNumber, provider: momoProvider, contactEmail, contactPhone } = getVendorSubaccountContact(vendor);
+
     if (verification_status === 'approved' && !vendor.paystack_subaccount_code) {
       console.log('Creating Paystack subaccount for vendor:', vendor.business_name);
-
-      // Determine settlement account (prefer MTN, fallback to Vodafone, then AirtelTigo)
-      const accountNumber = vendor.momo_number ||
-                           vendor.mtn_momo_number ||
-                           vendor.vodafone_cash_number ||
-                           vendor.airteltigo_number;
-
-      const momoProvider = vendor.momo_provider || 'MTN'; // Default to MTN
 
       if (!accountNumber) {
         console.warn('No mobile money number found for vendor:', vendor.id);
@@ -202,9 +185,9 @@ export const verifyVendor = async (req, res) => {
           settlement_bank: momoProvider, // MTN, VOD, or TGO
           account_number: accountNumber,
           percentage_charge: 5, // Platform takes 5%
-          primary_contact_email: vendor.email,
+          primary_contact_email: contactEmail,
           primary_contact_name: vendor.momo_name || vendor.business_name,
-          primary_contact_phone: vendor.phone,
+          primary_contact_phone: contactPhone,
           metadata: {
             vendor_id: vendor.id,
             business_registration: vendor.business_registration_number
@@ -317,10 +300,7 @@ export const createVendorSubaccount = async (req, res) => {
     }
 
     // Get Mobile Money number
-    const accountNumber = vendor.momo_number ||
-                         vendor.mtn_momo_number ||
-                         vendor.vodafone_cash_number ||
-                         vendor.airteltigo_number;
+    const { accountNumber, provider: momoProvider, contactEmail, contactPhone } = getVendorSubaccountContact(vendor);
 
     if (!accountNumber) {
       return res.status(400).json({
@@ -330,8 +310,6 @@ export const createVendorSubaccount = async (req, res) => {
       });
     }
 
-    const momoProvider = vendor.momo_provider || 'MTN';
-
     // Create subaccount
     console.log('Creating Paystack subaccount for vendor:', vendor.business_name);
     const subaccountResult = await paystackService.createSubaccount({
@@ -339,9 +317,9 @@ export const createVendorSubaccount = async (req, res) => {
       settlement_bank: momoProvider,
       account_number: accountNumber,
       percentage_charge: 5,
-      primary_contact_email: vendor.business_email || vendor.email,
+      primary_contact_email: contactEmail,
       primary_contact_name: vendor.momo_name || vendor.business_name,
-      primary_contact_phone: vendor.business_phone || vendor.phone,
+      primary_contact_phone: contactPhone,
       metadata: {
         vendor_id: vendor.id,
         business_registration: vendor.business_registration_number

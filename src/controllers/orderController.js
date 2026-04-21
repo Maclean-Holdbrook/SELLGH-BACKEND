@@ -1,5 +1,260 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import emailService from '../services/emailService.js';
+import paystackService from '../services/paystackService.js';
+import { getLineItemTotal } from '../utils/schemaContract.js';
+
+const buildOrderNumber = () => `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+const getVendorIdForUser = async (userId) => {
+  const { data: vendor } = await supabaseAdmin
+    .from('vendors')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  return vendor?.id || null;
+};
+
+const initializeOrderPayment = async ({ order, paymentMethod }) => {
+  const { data: orderItems, error: orderItemsError } = await supabaseAdmin
+    .from('order_items')
+    .select('vendor_id, total, subtotal')
+    .eq('order_id', order.id);
+
+  if (orderItemsError) {
+    throw orderItemsError;
+  }
+
+  const reference = `PAY-${order.order_number}-${Date.now()}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'https://sellgh.vercel.app';
+  const callbackUrl = `${frontendUrl}/payment/verify?reference=${reference}`;
+
+  const paymentData = {
+    email: order.customer_email,
+    amount: Math.round(order.total_amount * 100),
+    reference,
+    callback_url: callbackUrl,
+    metadata: {
+      order_id: order.id,
+      order_number: order.order_number,
+      customer_name: order.customer_name,
+      payment_method: paymentMethod,
+      custom_fields: [
+        {
+          display_name: 'Order Number',
+          variable_name: 'order_number',
+          value: order.order_number,
+        },
+        {
+          display_name: 'Customer',
+          variable_name: 'customer_name',
+          value: order.customer_name,
+        },
+      ],
+    },
+  };
+
+  if (orderItems?.length) {
+    const vendorAmounts = {};
+    for (const item of orderItems) {
+      if (!vendorAmounts[item.vendor_id]) {
+        vendorAmounts[item.vendor_id] = 0;
+      }
+      vendorAmounts[item.vendor_id] += getLineItemTotal(item);
+    }
+
+    const vendorSubaccounts = [];
+    for (const vendorId of Object.keys(vendorAmounts)) {
+      const { data: vendor } = await supabaseAdmin
+        .from('vendors')
+        .select('paystack_subaccount_code')
+        .eq('id', vendorId)
+        .maybeSingle();
+
+      if (vendor?.paystack_subaccount_code) {
+        vendorSubaccounts.push({
+          subaccount: vendor.paystack_subaccount_code,
+          share: Math.round(vendorAmounts[vendorId] * 0.95 * 100),
+        });
+      }
+    }
+
+    if (vendorSubaccounts.length > 0) {
+      paymentData.subaccount = vendorSubaccounts[0].subaccount;
+      if (vendorSubaccounts.length > 1) {
+        paymentData.split = vendorSubaccounts;
+      }
+    }
+  }
+
+  const result = await paystackService.initializeTransaction(paymentData);
+  if (!result.success) {
+    throw new Error(result.error || 'Payment initialization failed');
+  }
+
+  const { error: orderUpdateError } = await supabaseAdmin
+    .from('orders')
+    .update({
+      payment_reference: reference,
+      payment_method: paymentMethod,
+    })
+    .eq('id', order.id);
+
+  if (orderUpdateError) {
+    throw orderUpdateError;
+  }
+
+  try {
+    await supabaseAdmin
+      .from('transactions')
+      .insert({
+        order_id: order.id,
+        reference,
+        amount: order.total_amount,
+        payment_method: paymentMethod,
+        status: 'pending',
+        provider: 'paystack',
+      });
+  } catch (txError) {
+    console.warn('Transaction record not created (table may not exist):', txError.message);
+  }
+
+  return {
+    reference,
+    authorization_url: result.data.authorization_url,
+    access_code: result.data.access_code,
+  };
+};
+
+/**
+ * Create an order and initialize payment in a trusted context
+ * POST /api/orders/checkout
+ */
+export const createCheckout = async (req, res) => {
+  let createdOrderId = null;
+
+  try {
+    const {
+      customer_name,
+      customer_email,
+      customer_phone,
+      shipping_address,
+      shipping_city,
+      shipping_region,
+      notes,
+      payment_method,
+      cart_items,
+    } = req.body;
+
+    const productIds = cart_items.map((item) => item.product_id);
+    const { data: products, error: productsError } = await supabaseAdmin
+      .from('products')
+      .select('id, name, price, stock_quantity, vendor_id, image_url, is_active')
+      .in('id', productIds);
+
+    if (productsError) {
+      throw productsError;
+    }
+
+    const productMap = new Map((products || []).map((product) => [product.id, product]));
+    const orderItems = [];
+    let total = 0;
+
+    for (const item of cart_items) {
+      const product = productMap.get(item.product_id);
+
+      if (!product || !product.is_active) {
+        return res.status(400).json({
+          success: false,
+          error: 'One or more products are unavailable',
+        });
+      }
+
+      if ((product.stock_quantity || 0) < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          error: `${product.name} does not have enough stock`,
+        });
+      }
+
+      const subtotal = Number(product.price) * item.quantity;
+      total += subtotal;
+
+      orderItems.push({
+        product_id: product.id,
+        vendor_id: product.vendor_id,
+        product_name: product.name,
+        product_image: product.image_url || null,
+        price: product.price,
+        quantity: item.quantity,
+        total: subtotal,
+      });
+    }
+
+    const orderPayload = {
+      user_id: req.user.id,
+      status: 'pending',
+      total,
+      total_amount: total,
+      subtotal: total,
+      shipping_address,
+      shipping_city,
+      shipping_region,
+      customer_name,
+      customer_email,
+      customer_phone,
+      notes,
+      payment_method,
+      payment_status: 'pending',
+      order_number: buildOrderNumber(),
+    };
+
+    const { data: order, error: orderError } = await supabaseAdmin
+      .from('orders')
+      .insert(orderPayload)
+      .select()
+      .single();
+
+    if (orderError) {
+      throw orderError;
+    }
+
+    createdOrderId = order.id;
+
+    const { error: itemsError } = await supabaseAdmin
+      .from('order_items')
+      .insert(orderItems.map((item) => ({ ...item, order_id: order.id })));
+
+    if (itemsError) {
+      throw itemsError;
+    }
+
+    const payment = await initializeOrderPayment({ order, paymentMethod: payment_method });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        order_id: order.id,
+        order_number: order.order_number,
+        authorization_url: payment.authorization_url,
+        access_code: payment.access_code,
+        reference: payment.reference,
+      },
+    });
+  } catch (error) {
+    console.error('Create checkout error:', error);
+
+    if (createdOrderId) {
+      await supabaseAdmin.from('order_items').delete().eq('order_id', createdOrderId);
+      await supabaseAdmin.from('orders').delete().eq('id', createdOrderId);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create checkout',
+    });
+  }
+};
 
 /**
  * Update order status
@@ -14,11 +269,10 @@ export const updateOrderStatus = async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid status'
+        error: 'Invalid status',
       });
     }
 
-    // Get order
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .select('*')
@@ -28,11 +282,10 @@ export const updateOrderStatus = async (req, res) => {
     if (orderError || !order) {
       return res.status(404).json({
         success: false,
-        error: 'Order not found'
+        error: 'Order not found',
       });
     }
 
-    // Update order status
     const { error: updateError } = await supabaseAdmin
       .from('orders')
       .update({ status })
@@ -42,19 +295,17 @@ export const updateOrderStatus = async (req, res) => {
       throw updateError;
     }
 
-    // Send status update email
     await emailService.sendOrderStatusUpdate({ ...order, status }, status);
 
     res.json({
       success: true,
-      message: 'Order status updated successfully'
+      message: 'Order status updated successfully',
     });
-
   } catch (error) {
     console.error('Update order status error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update order status'
+      error: 'Failed to update order status',
     });
   }
 };
@@ -66,7 +317,6 @@ export const updateOrderStatus = async (req, res) => {
 export const getOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('🔍 Getting single order with ID:', id);
 
     const { data: order, error } = await supabaseAdmin
       .from('orders')
@@ -87,23 +337,40 @@ export const getOrder = async (req, res) => {
       .single();
 
     if (error || !order) {
-      console.log('❌ Order not found:', id);
       return res.status(404).json({
         success: false,
-        error: 'Order not found'
+        error: 'Order not found',
       });
+    }
+
+    if (req.profile?.role === 'customer' && order.user_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions',
+      });
+    }
+
+    if (req.profile?.role === 'vendor') {
+      const vendorId = await getVendorIdForUser(req.user.id);
+      const hasVendorItem = order.order_items?.some((item) => item.vendor_id === vendorId);
+
+      if (!hasVendorItem) {
+        return res.status(403).json({
+          success: false,
+          error: 'Insufficient permissions',
+        });
+      }
     }
 
     res.json({
       success: true,
-      data: order
+      data: order,
     });
-
   } catch (error) {
     console.error('Get order error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get order'
+      error: 'Failed to get order',
     });
   }
 };
@@ -115,9 +382,17 @@ export const getOrder = async (req, res) => {
 export const getVendorOrders = async (req, res) => {
   try {
     const { vendorId } = req.params;
-    console.log('🔍 Getting vendor orders for:', vendorId);
 
-    // Fetch order items
+    if (req.profile?.role === 'vendor') {
+      const authenticatedVendorId = await getVendorIdForUser(req.user.id);
+      if (!authenticatedVendorId || authenticatedVendorId !== vendorId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Insufficient permissions',
+        });
+      }
+    }
+
     const { data: orderItems, error } = await supabaseAdmin
       .from('order_items')
       .select('*')
@@ -128,17 +403,14 @@ export const getVendorOrders = async (req, res) => {
       throw error;
     }
 
-    if (!orderItems || orderItems.length === 0) {
+    if (!orderItems?.length) {
       return res.json({
         success: true,
-        data: []
+        data: [],
       });
     }
 
-    // Get unique order IDs
-    const orderIds = [...new Set(orderItems.map(item => item.order_id))];
-
-    // Fetch fresh order data
+    const orderIds = [...new Set(orderItems.map((item) => item.order_id))];
     const { data: ordersData, error: ordersError } = await supabaseAdmin
       .from('orders')
       .select('id, order_number, status, payment_status, customer_name, customer_email, customer_phone, shipping_address, shipping_city, shipping_region, created_at')
@@ -148,38 +420,35 @@ export const getVendorOrders = async (req, res) => {
       throw ordersError;
     }
 
-    // Create order map
     const orderMap = {};
-    ordersData?.forEach(order => {
+    ordersData?.forEach((order) => {
       orderMap[order.id] = order;
     });
 
-    // Group by order
     const groupedOrders = {};
-    orderItems?.forEach(item => {
-      const orderId = item.order_id;
-      const order = orderMap[orderId];
+    orderItems.forEach((item) => {
+      const order = orderMap[item.order_id];
       if (!order) return;
 
-      if (!groupedOrders[orderId]) {
-        groupedOrders[orderId] = {
+      if (!groupedOrders[item.order_id]) {
+        groupedOrders[item.order_id] = {
           ...order,
-          items: []
+          items: [],
         };
       }
-      groupedOrders[orderId].items.push(item);
+
+      groupedOrders[item.order_id].items.push(item);
     });
 
     res.json({
       success: true,
-      data: Object.values(groupedOrders)
+      data: Object.values(groupedOrders),
     });
-
   } catch (error) {
     console.error('Get vendor orders error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get vendor orders'
+      error: 'Failed to get vendor orders',
     });
   }
 };
@@ -192,23 +461,16 @@ export const getVendorOrderStats = async (req, res) => {
   try {
     const { vendorId } = req.params;
 
-    console.log('🔍 Getting stats for vendor ID:', vendorId);
-    console.log('🔍 Vendor ID type:', typeof vendorId);
-
-    // First, let's see ALL order_items in the database to debug
-    const { data: allItems, error: allError } = await supabaseAdmin
-      .from('order_items')
-      .select('id, vendor_id, product_name')
-      .limit(10);
-
-    console.log('📋 Sample of ALL order_items in database:', allItems);
-    if (allItems?.length > 0) {
-      console.log('📋 First item vendor_id:', allItems[0].vendor_id, 'type:', typeof allItems[0].vendor_id);
-      console.log('📋 Comparing:', vendorId, '===', allItems[0].vendor_id, '?', vendorId === allItems[0].vendor_id);
+    if (req.profile?.role === 'vendor') {
+      const authenticatedVendorId = await getVendorIdForUser(req.user.id);
+      if (!authenticatedVendorId || authenticatedVendorId !== vendorId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Insufficient permissions',
+        });
+      }
     }
 
-    // Get all order items for this vendor
-    // Note: Using separate queries to avoid stale nested data
     const { data: orderItems, error } = await supabaseAdmin
       .from('order_items')
       .select('*')
@@ -216,93 +478,69 @@ export const getVendorOrderStats = async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('❌ Supabase error:', error);
       throw error;
     }
 
-    if (!orderItems || orderItems.length === 0) {
-      console.log('ℹ️ No order items found for this vendor');
+    if (!orderItems?.length) {
       return res.json({
         success: true,
         totalSales: 0,
         orderCount: 0,
-        recentOrders: []
+        recentOrders: [],
       });
     }
 
-    // Get unique order IDs
-    const orderIds = [...new Set(orderItems.map(item => item.order_id))];
-    console.log('📦 Found order IDs:', orderIds);
-
-    // Fetch fresh order data
+    const orderIds = [...new Set(orderItems.map((item) => item.order_id))];
     const { data: ordersData, error: ordersError } = await supabaseAdmin
       .from('orders')
       .select('id, order_number, status, payment_status, customer_name, created_at')
       .in('id', orderIds);
 
-    console.log('📦 Query result - Order items found:', orderItems?.length || 0);
-    console.log('📦 Fresh orders fetched:', ordersData?.length || 0);
-    if (ordersData?.length > 0) {
-      console.log('First order payment status:', ordersData[0].payment_status);
-    }
-
     if (ordersError) {
-      console.error('❌ Orders fetch error:', ordersError);
       throw ordersError;
     }
 
-    // Create a map for quick order lookup
     const orderMap = {};
-    ordersData?.forEach(order => {
+    ordersData?.forEach((order) => {
       orderMap[order.id] = order;
     });
 
-    // Group by order and calculate stats
     const groupedOrders = {};
     let totalSales = 0;
 
-    orderItems?.forEach(item => {
-      const orderId = item.order_id;
-      const order = orderMap[orderId];
-
+    orderItems.forEach((item) => {
+      const order = orderMap[item.order_id];
       if (!order) return;
 
-      if (!groupedOrders[orderId]) {
-        groupedOrders[orderId] = {
+      if (!groupedOrders[item.order_id]) {
+        groupedOrders[item.order_id] = {
           ...order,
           total: 0,
-          items: []
+          items: [],
         };
       }
 
-      groupedOrders[orderId].items.push(item);
-      groupedOrders[orderId].total += item.subtotal || 0;
+      groupedOrders[item.order_id].items.push(item);
+      groupedOrders[item.order_id].total += getLineItemTotal(item);
 
-      // Only count paid orders in total sales
       if (order.payment_status === 'paid') {
-        totalSales += item.subtotal || 0;
+        totalSales += getLineItemTotal(item);
       }
     });
 
     const ordersArray = Object.values(groupedOrders);
-    console.log('✅ Total sales calculated:', totalSales);
-    console.log('✅ Order count:', ordersArray.length);
-
-    // Get recent orders (last 10)
-    const recentOrders = ordersArray.slice(0, 10);
 
     res.json({
       success: true,
       totalSales,
       orderCount: ordersArray.length,
-      recentOrders
+      recentOrders: ordersArray.slice(0, 10),
     });
-
   } catch (error) {
     console.error('Get vendor order stats error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get vendor order stats'
+      error: 'Failed to get vendor order stats',
     });
   }
 };
@@ -313,7 +551,6 @@ export const getVendorOrderStats = async (req, res) => {
  */
 export const getAllOrders = async (req, res) => {
   try {
-    console.log('📋 Getting all orders for admin');
     const { data: orders, error } = await supabaseAdmin
       .from('orders')
       .select(`
@@ -329,16 +566,15 @@ export const getAllOrders = async (req, res) => {
 
     if (error) throw error;
 
-    console.log('📋 Found orders:', orders?.length || 0);
     res.json({
       success: true,
-      data: orders || []
+      data: orders || [],
     });
   } catch (error) {
     console.error('Get all orders error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get orders'
+      error: 'Failed to get orders',
     });
   }
 };
@@ -349,13 +585,10 @@ export const getAllOrders = async (req, res) => {
  */
 export const getAdminStats = async (req, res) => {
   try {
-    console.log('📊 Getting admin stats');
-    // Get total orders
     const { count: orderCount } = await supabaseAdmin
       .from('orders')
       .select('*', { count: 'exact', head: true });
 
-    // Get total revenue from paid orders
     const { data: paidOrders, error } = await supabaseAdmin
       .from('orders')
       .select('total_amount')
@@ -364,20 +597,19 @@ export const getAdminStats = async (req, res) => {
     if (error) throw error;
 
     const totalRevenue = paidOrders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
-    const platformCommission = totalRevenue * 0.05; // 5% commission
+    const platformCommission = totalRevenue * 0.05;
 
-    console.log('📊 Stats:', { orderCount, totalRevenue, platformCommission });
     res.json({
       success: true,
       totalOrders: orderCount || 0,
       totalRevenue,
-      platformCommission
+      platformCommission,
     });
   } catch (error) {
     console.error('Get admin stats error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get admin stats'
+      error: 'Failed to get admin stats',
     });
   }
 };
@@ -399,23 +631,24 @@ export const debugAllOrderItems = async (req, res) => {
     res.json({
       success: true,
       count: allItems?.length || 0,
-      items: allItems
+      items: allItems,
     });
   } catch (error) {
     console.error('Debug order items error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch order items'
+      error: 'Failed to fetch order items',
     });
   }
 };
 
 export default {
+  createCheckout,
   updateOrderStatus,
   getOrder,
   getVendorOrders,
   getVendorOrderStats,
   getAllOrders,
   getAdminStats,
-  debugAllOrderItems
+  debugAllOrderItems,
 };

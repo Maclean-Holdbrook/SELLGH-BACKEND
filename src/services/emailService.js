@@ -1,9 +1,11 @@
 import { Resend } from 'resend';
+import { getLineItemTotal } from '../utils/schemaContract.js';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 const FROM_EMAIL = process.env.EMAIL_FROM || 'SellGH <onboarding@resend.dev>';
+const formatAmount = (amount) => Number(amount || 0).toFixed(2);
 
 // Check if email service is configured
 const isConfigured = () => {
@@ -21,7 +23,7 @@ export const sendOrderConfirmation = async (order, orderItems) => {
   if (!isConfigured()) return { success: false, error: 'Email service not configured' };
 
   try {
-    const itemsHtml = orderItems.map(item => `
+    const itemsHtml = orderItems.map((item) => `
       <tr>
         <td style="padding: 12px; border-bottom: 1px solid #eee;">
           ${item.product_name}
@@ -30,7 +32,7 @@ export const sendOrderConfirmation = async (order, orderItems) => {
           ${item.quantity}
         </td>
         <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">
-          GH₵ ${item.subtotal?.toFixed(2)}
+          GH₵ ${formatAmount(getLineItemTotal(item))}
         </td>
       </tr>
     `).join('');
@@ -74,7 +76,7 @@ export const sendOrderConfirmation = async (order, orderItems) => {
             <tfoot>
               <tr>
                 <td colspan="2" style="padding: 12px; text-align: right; font-weight: bold;">Total:</td>
-                <td style="padding: 12px; text-align: right; font-weight: bold; color: #4F46E5;">GH₵ ${order.total_amount?.toFixed(2)}</td>
+                <td style="padding: 12px; text-align: right; font-weight: bold; color: #4F46E5;">GH₵ ${formatAmount(order.total_amount ?? order.total ?? order.subtotal)}</td>
               </tr>
             </tfoot>
           </table>
@@ -104,7 +106,7 @@ export const sendOrderConfirmation = async (order, orderItems) => {
           </div>
         </body>
         </html>
-      `
+      `,
     });
 
     if (error) {
@@ -131,34 +133,34 @@ export const sendOrderStatusUpdate = async (order, newStatus) => {
       confirmed: {
         title: 'Order Confirmed',
         message: 'Your order has been confirmed and is being prepared.',
-        color: '#3b82f6'
+        color: '#3b82f6',
       },
       processing: {
         title: 'Order Processing',
         message: 'Your order is now being processed by the vendor.',
-        color: '#8b5cf6'
+        color: '#8b5cf6',
       },
       shipped: {
         title: 'Order Shipped',
         message: 'Great news! Your order has been shipped and is on its way.',
-        color: '#6366f1'
+        color: '#6366f1',
       },
       delivered: {
         title: 'Order Delivered',
         message: 'Your order has been delivered. We hope you enjoy your purchase!',
-        color: '#10b981'
+        color: '#10b981',
       },
       cancelled: {
         title: 'Order Cancelled',
         message: 'Your order has been cancelled. If you have any questions, please contact support.',
-        color: '#ef4444'
-      }
+        color: '#ef4444',
+      },
     };
 
     const statusInfo = statusMessages[newStatus] || {
       title: 'Order Update',
       message: `Your order status has been updated to: ${newStatus}`,
-      color: '#6b7280'
+      color: '#6b7280',
     };
 
     const { data, error } = await resend.emails.send({
@@ -197,7 +199,7 @@ export const sendOrderStatusUpdate = async (order, newStatus) => {
           </div>
         </body>
         </html>
-      `
+      `,
     });
 
     if (error) {
@@ -220,15 +222,15 @@ export const sendVendorOrderNotification = async (vendorEmail, order, vendorItem
   if (!isConfigured()) return { success: false, error: 'Email service not configured' };
 
   try {
-    const itemsHtml = vendorItems.map(item => `
+    const itemsHtml = vendorItems.map((item) => `
       <tr>
         <td style="padding: 12px; border-bottom: 1px solid #eee;">${item.product_name}</td>
         <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">GH₵ ${item.subtotal?.toFixed(2)}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">GH₵ ${formatAmount(getLineItemTotal(item))}</td>
       </tr>
     `).join('');
 
-    const vendorTotal = vendorItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+    const vendorTotal = vendorItems.reduce((sum, item) => sum + getLineItemTotal(item), 0);
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
@@ -272,7 +274,7 @@ export const sendVendorOrderNotification = async (vendorEmail, order, vendorItem
             <tfoot>
               <tr>
                 <td colspan="2" style="padding: 12px; text-align: right; font-weight: bold;">Your Total:</td>
-                <td style="padding: 12px; text-align: right; font-weight: bold; color: #10b981;">GH₵ ${vendorTotal.toFixed(2)}</td>
+                <td style="padding: 12px; text-align: right; font-weight: bold; color: #10b981;">GH₵ ${formatAmount(vendorTotal)}</td>
               </tr>
             </tfoot>
           </table>
@@ -298,7 +300,7 @@ export const sendVendorOrderNotification = async (vendorEmail, order, vendorItem
           </div>
         </body>
         </html>
-      `
+      `,
     });
 
     if (error) {
@@ -317,5 +319,5 @@ export const sendVendorOrderNotification = async (vendorEmail, order, vendorItem
 export default {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
-  sendVendorOrderNotification
+  sendVendorOrderNotification,
 };

@@ -88,3 +88,63 @@ export const orderQuerySchema = Joi.object({
     .optional()
     .default(0),
 });
+
+// Server-owned checkout validation
+export const checkoutSchema = Joi.object({
+  customer_name: Joi.string()
+    .min(2)
+    .max(200)
+    .required()
+    .trim(),
+
+  customer_email: Joi.string()
+    .email()
+    .required()
+    .trim()
+    .lowercase(),
+
+  customer_phone: Joi.string()
+    .pattern(/^[+]?[\d\s\-()]+$/)
+    .min(10)
+    .max(20)
+    .required()
+    .trim(),
+
+  shipping_address: Joi.string()
+    .min(5)
+    .max(500)
+    .required()
+    .trim(),
+
+  shipping_city: Joi.string()
+    .min(2)
+    .max(100)
+    .required()
+    .trim(),
+
+  shipping_region: Joi.string()
+    .min(2)
+    .max(100)
+    .required()
+    .trim(),
+
+  notes: Joi.string()
+    .max(1000)
+    .optional()
+    .allow('', null)
+    .trim(),
+
+  payment_method: Joi.string()
+    .valid('card', 'momo')
+    .required(),
+
+  cart_items: Joi.array()
+    .items(
+      Joi.object({
+        product_id: Joi.string().uuid().required(),
+        quantity: Joi.number().integer().min(1).required(),
+      })
+    )
+    .min(1)
+    .required(),
+});

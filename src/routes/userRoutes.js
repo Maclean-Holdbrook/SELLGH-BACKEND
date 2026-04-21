@@ -4,6 +4,53 @@ import { supabaseAdmin } from '../config/supabase.js';
 
 const router = express.Router();
 
+// Create or update the authenticated user's profile in a trusted context
+router.post('/sync-profile', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const requestedRole = req.body?.role;
+    const safeRole = ['customer', 'vendor'].includes(requestedRole) ? requestedRole : 'customer';
+
+    const payload = {
+      id: userId,
+      email: req.user.email,
+      full_name: req.body?.full_name || req.user.user_metadata?.full_name || req.user.user_metadata?.name || '',
+      phone: req.body?.phone || req.user.user_metadata?.phone || '',
+      role: safeRole,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: existingUser } = await supabaseAdmin
+      .from('users')
+      .select('id, role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (existingUser?.role === 'admin') {
+      payload.role = 'admin';
+    }
+
+    const { data: syncedUser, error } = await supabaseAdmin
+      .from('users')
+      .upsert(payload, { onConflict: 'id' })
+      .select('id, email, full_name, phone, role, created_at, updated_at')
+      .single();
+
+    if (error) {
+      console.error('Error syncing user profile:', error);
+      return res.status(500).json({ error: 'Failed to sync user profile' });
+    }
+
+    res.json({
+      success: true,
+      user: syncedUser,
+    });
+  } catch (error) {
+    console.error('Error in sync-profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Upgrade customer account to vendor
 router.post('/upgrade-to-vendor', authenticate, async (req, res) => {
   try {

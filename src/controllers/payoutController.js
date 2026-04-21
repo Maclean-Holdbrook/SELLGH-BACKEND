@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase.js';
+import { getPayoutCommissionIds } from '../utils/schemaContract.js';
 
 /**
  * Get vendor commissions (for vendor dashboard)
@@ -275,7 +276,7 @@ export const createVendorPayout = async (req, res) => {
 
     // Calculate total payout amount
     const totalAmount = commissions.reduce((sum, c) => sum + parseFloat(c.vendor_amount), 0);
-    const orderIds = commissions.map(c => c.order_id);
+    const commissionIds = commissions.map(c => c.id);
 
     // Create payout record
     const { data: payout, error: payoutError } = await supabaseAdmin
@@ -287,7 +288,8 @@ export const createVendorPayout = async (req, res) => {
         period_end,
         status: 'pending',
         payout_method: payout_method || 'momo',
-        order_ids: orderIds,
+        commission_ids: commissionIds,
+        order_ids: commissionIds,
         notes
       })
       .select()
@@ -350,17 +352,40 @@ export const updatePayoutStatus = async (req, res) => {
       updateData.paid_at = new Date().toISOString();
       updateData.transaction_reference = transaction_reference;
 
-      // Mark all commissions in this payout as settled
-      const { error: commissionsUpdateError } = await supabaseAdmin
-        .from('commissions')
-        .update({
-          status: 'settled',
-          settled_at: new Date().toISOString()
-        })
-        .in('order_id', payout.order_ids);
+      const commissionIds = getPayoutCommissionIds(payout);
+      let commissionsToSettle = [];
 
-      if (commissionsUpdateError) {
-        console.error('Failed to update commission status:', commissionsUpdateError);
+      if (commissionIds.length > 0) {
+        const { data: directCommissionMatches } = await supabaseAdmin
+          .from('commissions')
+          .select('id')
+          .in('id', commissionIds);
+
+        if (directCommissionMatches?.length) {
+          commissionsToSettle = directCommissionMatches.map((commission) => commission.id);
+        } else {
+          const { data: legacyCommissionMatches } = await supabaseAdmin
+            .from('commissions')
+            .select('id')
+            .eq('vendor_id', payout.vendor_id)
+            .in('order_id', commissionIds);
+
+          commissionsToSettle = legacyCommissionMatches?.map((commission) => commission.id) || [];
+        }
+      }
+
+      if (commissionsToSettle.length > 0) {
+        const { error: commissionsUpdateError } = await supabaseAdmin
+          .from('commissions')
+          .update({
+            status: 'settled',
+            settled_at: new Date().toISOString()
+          })
+          .in('id', commissionsToSettle);
+
+        if (commissionsUpdateError) {
+          console.error('Failed to update commission status:', commissionsUpdateError);
+        }
       }
     }
 
@@ -709,7 +734,8 @@ export const requestVendorPayout = async (req, res) => {
         payout_method: payment_method,
         account_details: account_details,
         notes,
-        order_ids: commissionIds // Track which commissions this payout covers
+        commission_ids: commissionIds,
+        order_ids: commissionIds // Legacy compatibility with older rows/UI
       })
       .select()
       .single();

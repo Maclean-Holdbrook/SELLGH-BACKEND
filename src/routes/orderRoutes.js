@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  createCheckout,
   updateOrderStatus,
   getOrder,
   getVendorOrders,
@@ -15,6 +16,7 @@ import {
   orderIdSchema,
   vendorIdParamSchema,
   orderQuerySchema,
+  checkoutSchema,
 } from '../validators/orderValidator.js';
 
 const router = express.Router();
@@ -31,6 +33,9 @@ router.get('/debug/stats', authenticate, authorize('admin'), getAdminStats);
 router.get('/vendor/:vendorId/stats', authenticate, authorize('vendor', 'admin'), validate(vendorIdParamSchema, 'params'), getVendorOrderStats);
 router.get('/vendor/:vendorId', authenticate, authorize('vendor', 'admin'), validate(vendorIdParamSchema, 'params'), validate(orderQuerySchema, 'query'), getVendorOrders);
 
+// Customer checkout
+router.post('/checkout', authenticate, validate(checkoutSchema), createCheckout);
+
 // Update order status - vendor or admin only
 router.put('/:id/status', authenticate, authorize('vendor', 'admin'), validate(orderIdSchema, 'params'), validate(updateOrderStatusSchema), updateOrderStatus);
 
@@ -38,4 +43,3 @@ router.put('/:id/status', authenticate, authorize('vendor', 'admin'), validate(o
 router.get('/:id', authenticate, validate(orderIdSchema, 'params'), getOrder);
 
 export default router;
-

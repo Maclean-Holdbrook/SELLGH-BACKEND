@@ -26,7 +26,6 @@ const router = express.Router();
 router.get('/', validate(productQuerySchema, 'query'), getAllProducts);
 router.get('/categories', getCategories);
 router.get('/user/:userId', validate(userIdSchema, 'params'), getProductsByUserId);
-router.get('/:id', validate(productIdSchema, 'params'), getProductById);
 
 // Vendor routes
 router.get('/vendor/my-products', authenticate, authorize('vendor'), getVendorProducts);
@@ -34,5 +33,6 @@ router.post('/', authenticate, authorize('vendor'), validate(createProductSchema
 router.put('/:id', authenticate, authorize('vendor'), validate(productIdSchema, 'params'), validate(updateProductSchema), updateProduct);
 router.delete('/:id', authenticate, authorize('vendor'), validate(productIdSchema, 'params'), deleteProduct);
 router.patch('/:id/toggle-status', authenticate, authorize('vendor'), validate(productIdSchema, 'params'), toggleProductStatus);
+router.get('/:id', validate(productIdSchema, 'params'), getProductById);
 
 export default router;

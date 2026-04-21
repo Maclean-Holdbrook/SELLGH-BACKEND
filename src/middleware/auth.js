@@ -32,7 +32,7 @@ export const authenticate = async (req, res, next) => {
       .from('users')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     console.log('📊 Users table query result:', { data: usersData, error: usersError });
 
@@ -47,7 +47,7 @@ export const authenticate = async (req, res, next) => {
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (profilesData) {
         profile = profilesData;
@@ -60,7 +60,7 @@ export const authenticate = async (req, res, next) => {
         profile = {
           id: user.id,
           email: user.email,
-          role: user.role || user.user_metadata?.role || 'customer',
+          role: 'customer',
           ...user.user_metadata
         };
         console.log('⚠️ Using fallback profile:', profile);
