@@ -192,7 +192,7 @@ export const initializePayment = async (req, res) => {
 
     const reference = createReference(order.order_number);
     const frontendUrl = process.env.FRONTEND_URL || 'https://sellgh.vercel.app';
-    const callbackUrl = `${frontendUrl}/shop?payment_reference=${reference}`;
+    const callbackUrl = `${frontendUrl}/shop`;
 
     const paymentData = {
       email,
